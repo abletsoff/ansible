@@ -1,0 +1,62 @@
+- name: Health check notifications
+  hosts: linux_srv, linux_virtualbox
+  become: true
+  vars:
+    ansible_ssh_user: "{{ user }}"
+    ansible_become_password: "{{ password }}"
+
+  tasks:
+    - name: Ensuring that required packages are installed
+      apt:
+        name: 
+          - cowsay
+          - mailutils
+          - sendmail
+        state: present
+
+    - name: Enshuring sendmail service in enabled and running
+      service:
+        name: sendmail
+        state: started
+        enabled: true
+    
+    - name: Copying health check script content
+      template:
+        src: health_check.sh.j2
+        dest: /usr/local/bin/health_check.sh
+        mode: 0744
+        owner: "{{ user }}"
+        group: "{{ user }}"
+
+    - name: Adding cron entry
+      template:
+        src: cron.j2
+        dest: /etc/cron.d/health_check
+        mode: 0644
+
+- name: NTP client configuration 
+  hosts: linux_srv, linux_virtualbox
+  become: true
+  vars:
+    ansible_ssh_user: "{{ user }}"
+    ansible_become_password: "{{ password }}"
+
+  tasks:
+    - name: Ensuring that required packages are installed
+      apt:
+        name: 
+          - ntp
+        state: present
+
+    
+    - name: Comment out pool configuration lines
+      replace:
+        path: /etc/ntp.conf
+        regexp: '^(pool .*)$'
+        replace: '# \1' 
+
+    - name: Insert server configuration line
+      lineinfile:
+        path: /etc/ntp.conf
+        line: server {{ ntp_server_address }}
+        state: present

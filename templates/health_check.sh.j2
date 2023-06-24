@@ -1,0 +1,82 @@
+#!/bin/bash
+
+f_stat_gathering () {
+	uptime="Uptime: $(uptime --pretty | sed 's/up //g')"
+	cpus=$(lscpu | grep -P "^CPU\(s\)" | sed "s/ //g" | sed "s/:/: /g")
+	
+	load=$(cat /proc/loadavg) 
+	load_one_min="$(echo $load | cut -d ' ' -f1 | sed "s/ //g") (1min)"
+	load_five_min="$(echo $load | cut -d ' ' -f2 | sed "s/ //g") (5min)"
+	load_fifteen_min="$(echo $load | cut -d ' ' -f3 | sed "s/ //g") (15min)"
+	load="Load: ${load_one_min} ${load_five_min} ${load_fifteen_min}"
+	
+	mem=$(free -h | grep Mem)
+	mem_total="$(echo $mem | cut -d ' ' -f2) (total)"
+	mem_used="$(echo $mem | cut -d ' ' -f3) (used)"
+	mem_avail="$(echo $mem | cut -d ' ' -f7) (available)"
+	mem="Memory: ${mem_total} ${mem_used} ${mem_avail}"
+	
+	disk_usage=$(df -h / | grep -v  "^Filesystem")
+	disk_size="$(echo $disk_usage | cut -d " " -f2) (size)"
+	disk_used="$(echo $disk_usage | cut -d " " -f3) (used)"
+	disk_avail="$(echo $disk_usage | cut -d " " -f4) (avail)"
+	disk_use=$(echo $disk_usage | grep -o -P "\d{1,3}%")
+	disk_usage="Disk: ${disk_size} ${disk_used} ${disk_avail} ${disk_use}"
+	
+	io_wait="I/O wait: $(top -b -n 1 | grep "^%Cpu(s):" | cut -d "," -f5 \
+	       	| grep -o -P "[\d\.]*")"
+}
+
+f_alert () {	
+	num1=$(echo $uptime | grep -P "Uptime: \d{1,2} minute" | cut -d ' ' -f2)
+	if [[ $num1 != "" && $num1 -le 10 ]]; then
+		alert_msg="${alert_message}Rebooted. "
+	fi
+
+	num1=$(echo $load_five_min | sed 's/,/./g' | cut -d '.' -f1)
+	num2=$(echo $cpus | cut -d ' ' -f2)
+	if [[ $num1 -ge $num2 ]]; then
+		alert_msg="${alert_message}High load. "
+	fi
+	
+	num1=$(echo $mem_avail | cut -d " " -f1 | sed 's/,/./g' | grep Mi | sed 's/Mi//g')
+	if [[ $num1 != "" && $num1 -le 100 ]]; then
+		alert_msg="${alert_message}RAM exhaustion. "
+	fi
+
+	num1=$(echo $disk_use | sed "s/%//g")
+	if [[ $num1 -ge 85 ]]; then
+		alert_msg="${alert_message}Low disk space. "
+	fi
+	
+	if [[ "$alert_msg" != "" ]]; then
+		f_report "$alert_msg"
+	fi
+}
+
+f_report () {
+	subject=$1
+	msg_body=$(/usr/games/cowsay -W 80 "Date: $(date)
+	
+	$uptime
+	
+	$cpus
+	
+	$load
+	
+	$io_wait
+	
+	$mem
+	
+	$disk_usage")
+	
+	echo "$msg_body" | mail -aFrom:health_check \
+		-s "${subject} Host: $(hostname)" {{ email_notification_address }}
+}
+
+f_stat_gathering
+f_alert
+
+if [[ "$1" == "report" ]]; then
+	f_report "Daily health check. "
+fi
