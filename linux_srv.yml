@@ -42,21 +42,28 @@
     ansible_become_password: "{{ password }}"
 
   tasks:
-    - name: Ensuring that required packages are installed
+    - name: Ensuring that ntpsec package is installed
       apt:
         name: 
-          - ntp
+          - ntpsec
         state: present
 
-    
     - name: Comment out pool configuration lines
       replace:
-        path: /etc/ntp.conf
+        path: /etc/ntpsec/ntp.conf
         regexp: '^(pool .*)$'
         replace: '# \1' 
+      register: ntp_conf_comment
 
     - name: Insert server configuration line
       lineinfile:
-        path: /etc/ntp.conf
+        path: /etc/ntpsec/ntp.conf
         line: server {{ ntp_server_address }}
         state: present
+      register: ntp_conf_server
+
+    - name: Restart ntpsec.service
+      service:
+        name: ntpsec
+        state: restarted
+      when: ntp_conf_comment.changed or ntp_conf_server.changed
