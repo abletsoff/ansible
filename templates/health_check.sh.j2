@@ -50,13 +50,14 @@ f_alert () {
 	fi
 	
 	if [[ "$alert_msg" != "" ]]; then
-		f_report "$alert_msg"
+		f_report "$alert_msg" "-T U -e @@"
 	fi
 }
 
 f_report () {
 	subject=$1
-	msg_body=$(/usr/games/cowsay -W 80 "Date: $(date)
+	cowsay_options=$2
+	msg_body=$(/usr/games/cowsay ${cowsay_options} -W 80 "Date: $(date)
 	
 	$uptime
 	
@@ -69,7 +70,7 @@ f_report () {
 	$mem
 	
 	$disk_usage")
-	
+
 	echo "$msg_body" | mail -aFrom:health_check \
 		-s "${subject} Host: $(hostname)" {{ email_notification_address }}
 }
